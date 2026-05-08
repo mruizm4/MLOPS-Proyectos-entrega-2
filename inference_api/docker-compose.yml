@@ -1,0 +1,25 @@
+api-inference:
+    build:
+      context: ./inference_api
+      dockerfile: Dockerfile.inference_api
+    container_name: covertype_inference_api
+    ports:
+      - "8001:8001"
+    depends_on:
+      - minio
+    environment:
+      MYSQL_HOST: mysql_data
+      MYSQL_PORT: 3306
+      MYSQL_USER: penguins_user
+      MYSQL_PASSWORD: penguins_pass
+      MYSQL_DB: penguins
+    volumes:
+      - ./logs:/app/logs
+      - ./encoders:/app/encoders
+    networks:
+      - minio-net
+      - mlops_net
+
+volumes:
+  data:
+  postgres-db-volume:

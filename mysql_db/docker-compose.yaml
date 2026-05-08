@@ -1,0 +1,21 @@
+services:
+
+  mysql:
+    image: mysql:8.0
+    container_name: mlops_mysql
+    restart: always
+
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: mlops_db
+      MYSQL_USER: mlops_user
+      MYSQL_PASSWORD: mlops_pass
+
+    ports:
+      - "3306:3306"
+
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+volumes:
+  mysql_data:

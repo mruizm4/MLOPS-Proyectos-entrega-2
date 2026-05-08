@@ -363,8 +363,10 @@ services:
     restart: unless-stopped
 
   jupyter:
-    image: jupyter/scipy-notebook:latest
-    container_name: minio-notebook
+    build:
+      context: .
+      dockerfile: mlflow_compose/notebooks/Dockerfile.jupyter
+    container_name: jupyter-notebook
     ports:
       - "8888:8888"
     environment:
@@ -397,6 +399,8 @@ services:
       - AWS_ACCESS_KEY_ID=admin
       - AWS_SECRET_ACCESS_KEY=supersecret
       - AWS_DEFAULT_REGION=us-east-1
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
       - MINIO_ENDPOINT=http://minio:9000
     volumes:
       - ./inference_api:/app
@@ -404,7 +408,28 @@ services:
       - ./logs:/app/logs
     networks: 
       - minio-net
+      - mlops_net
 
+  mlflow:
+    build:
+      context: ./mlflow_compose/mlflow
+      # Assuming Dockerfile is in the mlflow directory
+      dockerfile: Dockerfile
+    container_name: MLflow
+    environment:
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: admin
+      AWS_SECRET_ACCESS_KEY: supersecret
+    depends_on:
+      - minio
+    ports:
+      - 5000:5000
+    volumes:
+      - ./mlflowdb:/app/mlflowdb
+
+    networks:
+      - mlops_net
+    restart: always 
 
 volumes:
   postgres-db-volume:

@@ -16,6 +16,8 @@ RUN pip install --no-cache-dir \
     cryptography \
     minio
 
+RUN apt-get update && apt-get install -y curl
+
 # Exponer puerto MLflow
 EXPOSE 5000
 
@@ -25,4 +27,5 @@ CMD ["mlflow", "server", \
      "--port", "5000", \
      "--backend-store-uri", "mysql+pymysql://mlops_user:mlops_pass@mysql_db:3306/mlflow_db", \
      "--default-artifact-root", "s3://mlflow-artifacts", \
-     "--serve-artifacts"]
+     "--serve-artifacts", \
+     "--allowed-hosts", "*"]

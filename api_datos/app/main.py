@@ -245,7 +245,7 @@ def apply_id_mappings(
             .fillna("Unknown")
         )
 
-        print(mapped_df)
+        #print(mapped_df)
 
     return mapped_df
 # ============================================================

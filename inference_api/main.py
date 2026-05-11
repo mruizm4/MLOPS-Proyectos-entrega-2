@@ -1,211 +1,641 @@
-from fastapi import FastAPI, Query
-from typing import List, Annotated
+# ============================================================
+# 📦 IMPORTS
+# ============================================================
+
+import os
+import json
+import time
+import tempfile
+
+from datetime import datetime
+
 import pandas as pd
-from enum import Enum
+import mlflow
+import mlflow.catboost
 
-from predict import load_model_from_minio, predict_new_data, safe_load
+from mlflow.tracking import MlflowClient
 
-
-app = FastAPI(
-    title="CoverType Prediction API",
-    version="1.0"
+from sqlalchemy import (
+    create_engine,
+    text
 )
 
+from fastapi import (
+    FastAPI,
+    HTTPException
+)
 
-# ------------------------------------------------------------------------------
-# Cargar modelos al iniciar
-# ------------------------------------------------------------------------------
+from fastapi.responses import JSONResponse
 
-class model_class(str, Enum):
-    TREE = "TREE"
-    KNN = "KNN"
-    SVM = "SVM"
+# ============================================================
+# ⚙️ CONFIG
+# ============================================================
 
+# ----------------------------------------
+# MYSQL
+# ----------------------------------------
 
+MYSQL_HOST = "mysql_db"
+MYSQL_PORT = 3306
+MYSQL_DB = "mlops_db"
+MYSQL_USER = "mlops_user"
+MYSQL_PASSWORD = "mlops_pass"
 
+# ----------------------------------------
+# MLFLOW
+# ----------------------------------------
 
-@app.post("/predict")
-async def predict(
+MLFLOW_TRACKING_URI = "http://mlflow:5000"
 
-    models: Annotated[
-        List[model_class],
-        Query(
-            ...,
-            description="Lista de modelos a utilizar para la inferencia. Permite comparar resultados entre múltiples modelos o ejecutar inferencia tipo ensemble."
+MODEL_NAME = "diabetes_catboost_model"
+
+MODEL_ALIAS = "champion"
+
+# ----------------------------------------
+# MODEL REFRESH
+# ----------------------------------------
+
+MODEL_REFRESH_INTERVAL = 1
+
+# ============================================================
+# 🚀 FASTAPI
+# ============================================================
+
+app = FastAPI(
+    title="Diabetes Inference API",
+    version="1.0.0"
+)
+
+# ============================================================
+# 🌎 GLOBALS
+# ============================================================
+
+MODEL = None
+
+FEATURE_METADATA = None
+
+MODEL_VERSION = None
+
+LAST_MODEL_CHECK = 0
+
+MODEL_LOADED_AT = None
+
+# ============================================================
+# 🗄️ DATABASE
+# ============================================================
+
+def create_db_engine():
+    """
+    Creates SQLAlchemy engine.
+    """
+
+    connection_uri = (
+        f"mysql+pymysql://{MYSQL_USER}:{MYSQL_PASSWORD}"
+        f"@{MYSQL_HOST}:{MYSQL_PORT}/{MYSQL_DB}"
+    )
+
+    return create_engine(connection_uri)
+
+ENGINE = create_db_engine()
+
+# ============================================================
+# 🗄️ CREATE INFERENCE TABLE
+# ============================================================
+
+def create_inference_table():
+    """
+    Creates inference log table.
+    """
+
+    query = """
+    CREATE TABLE IF NOT EXISTS inference_logs (
+
+        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+
+        timestamp DATETIME NOT NULL,
+
+        model_name VARCHAR(255),
+
+        model_version VARCHAR(50),
+
+        model_alias VARCHAR(50),
+
+        processing_time_ms FLOAT,
+
+        prediction VARCHAR(255),
+
+        probability FLOAT,
+
+        request_json JSON,
+
+        response_json JSON
+    )
+    """
+
+    with ENGINE.begin() as conn:
+
+        conn.execute(text(query))
+
+    print("✅ inference_logs table ready")
+
+# ============================================================
+# 🤖 LOAD CHAMPION MODEL
+# ============================================================
+
+def load_champion_model():
+    """
+    Loads champion model and metadata from MLflow.
+    """
+
+    global MODEL
+    global FEATURE_METADATA
+    global MODEL_VERSION
+    global MODEL_LOADED_AT
+
+    print("⬇️ Loading champion model...")
+
+    mlflow.set_tracking_uri(
+        MLFLOW_TRACKING_URI
+    )
+
+    client = MlflowClient()
+
+    champion = client.get_model_version_by_alias(
+        MODEL_NAME,
+        MODEL_ALIAS
+    )
+
+    version = champion.version
+
+    run_id = champion.run_id
+
+    # --------------------------------------------------------
+    # LOAD MODEL
+    # --------------------------------------------------------
+
+    model_uri = (
+        f"models:/{MODEL_NAME}@{MODEL_ALIAS}"
+    )
+
+    MODEL = mlflow.catboost.load_model(
+        model_uri
+    )
+
+    # --------------------------------------------------------
+    # LOAD FEATURE METADATA
+    # --------------------------------------------------------
+
+    metadata_path = (
+        mlflow.artifacts.download_artifacts(
+            run_id=run_id,
+            artifact_path=(
+                "metadata/"
+                "feature_metadata.json"
+            )
         )
-    ],
+    )
 
-    Wilderness_Area:str =Query(
-            "Rawah",
-            description="Área silvestre a la que pertenece la celda de terreno. Corresponde a una variable categórica one-hot del dataset Covertype."
+    with open(metadata_path, "r") as f:
+
+        FEATURE_METADATA = json.load(f)
+
+    MODEL_VERSION = version
+
+    MODEL_LOADED_AT = datetime.utcnow()
+
+    print(
+        f"✅ Champion model loaded "
+        f"(version={version})"
+    )
+
+# ============================================================
+# 🔄 REFRESH MODEL IF NEEDED
+# ============================================================
+def refresh_model_if_needed():
+    """
+    Reloads model if champion changed.
+    Also tries loading model if none exists.
+    """
+
+    global LAST_MODEL_CHECK
+    global MODEL
+
+    now = time.time()
+
+    # --------------------------------------------------------
+    # IF MODEL IS MISSING:
+    # ALWAYS TRY
+    # --------------------------------------------------------
+
+    if MODEL is not None:
+
+        if (
+            now - LAST_MODEL_CHECK
+            < MODEL_REFRESH_INTERVAL
+        ):
+
+            return
+
+    LAST_MODEL_CHECK = now
+
+    try:
+
+        mlflow.set_tracking_uri(
+            MLFLOW_TRACKING_URI
         )
-    ,
 
-    Soil_Type: str = Query(
-            "C2702",
-            description="Tipo de suelo dominante en la celda. Variable categórica one-hot entre los 40 tipos ecológicos definidos en el dataset."
+        client = MlflowClient()
+
+        champion = (
+            client.get_model_version_by_alias(
+                MODEL_NAME,
+                MODEL_ALIAS
+            )
         )
-    ,
 
-    bucket: str = Query(
-        "models-bucket",
-        description="Elevación del terreno en metros sobre el nivel del mar."
-    ),
-    Elevation: float = Query(
-        2500,
-        description="Elevación del terreno en metros sobre el nivel del mar."
-    ),
-    
+        latest_version = champion.version
 
-    Aspect: float = Query(
-        120,
-        description="Orientación azimutal de la pendiente en grados (0–360). Influye en la exposición solar."
-    ),
+        # ----------------------------------------------------
+        # NO MODEL LOADED
+        # ----------------------------------------------------
 
-    Slope: float = Query(
-        10,
-        description="Pendiente del terreno en grados."
-    ),
+        if MODEL is None:
 
-    Horizontal_Distance_To_Hydrology: float = Query(
-        100,
-        description="Distancia horizontal en metros hasta la fuente de agua más cercana."
-    ),
+            print(
+                "⬇️ Loading first champion model..."
+            )
 
-    Vertical_Distance_To_Hydrology: float = Query(
-        20,
-        description="Distancia vertical en metros respecto a la fuente de agua más cercana. Puede ser positiva o negativa."
-    ),
+            load_champion_model()
 
-    Horizontal_Distance_To_Roadways: float = Query(
-        300,
-        description="Distancia horizontal en metros hasta la carretera o vía más cercana."
-    ),
+            return
 
-    Hillshade_9am: float = Query(
-        220,
-        description="Índice de sombreado del terreno a las 9 AM calculado a partir de la topografía."
-    ),
+        # ----------------------------------------------------
+        # RELOAD IF VERSION CHANGED
+        # ----------------------------------------------------
 
-    Hillshade_Noon: float = Query(
-        230,
-        description="Índice de sombreado del terreno al mediodía."
-    ),
+        global MODEL_VERSION
 
-    Hillshade_3pm: float = Query(
-        200,
-        description="Índice de sombreado del terreno a las 3 PM."
-    ),
+        if (
+            str(latest_version)
+            != str(MODEL_VERSION)
+        ):
 
-    Horizontal_Distance_To_Fire_Points: float = Query(
-        500,
-        description="Distancia horizontal en metros hasta el punto histórico de incendio forestal más cercano."
-    ),
+            print(
+                f"🔄 New champion detected "
+                f"({MODEL_VERSION} -> "
+                f"{latest_version})"
+            )
 
+            load_champion_model()
+
+    except Exception as e:
+
+        print(
+            "⚠️ Could not refresh model"
+        )
+
+        print(str(e))
+
+# ============================================================
+# ✅ VALIDATE PAYLOAD
+# ============================================================
+
+def validate_payload(payload):
+    """
+    Validates payload using feature metadata.
+    """
+
+    validated = {}
+
+    # --------------------------------------------------------
+    # CHECK REQUIRED FEATURES
+    # --------------------------------------------------------
+
+    for feature_name, metadata in (
+        FEATURE_METADATA.items()
     ):
+
+        if feature_name not in payload:
+
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Missing feature: "
+                    f"{feature_name}"
+                )
+            )
+
+        value = payload[feature_name]
+
+        # ----------------------------------------------------
+        # CATEGORICAL
+        # ----------------------------------------------------
+
+        if metadata["type"] == "categorical":
+
+            allowed_values = metadata["values"]
+
+            if value not in allowed_values:
+
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "feature": feature_name,
+                        "invalid_value": value,
+                        "allowed_values": allowed_values
+                    }
+                )
+
+            validated[feature_name] = str(value)
+
+        # ----------------------------------------------------
+        # NUMERIC
+        # ----------------------------------------------------
+
+        else:
+
+            try:
+
+                numeric_value = float(value)
+
+            except Exception:
+
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Invalid numeric value "
+                        f"for {feature_name}"
+                    )
+                )
+
+            min_value = metadata["min"]
+            max_value = metadata["max"]
+
+            if (
+                min_value is not None
+                and numeric_value < min_value
+            ):
+
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"{feature_name} below "
+                        f"minimum value"
+                    )
+                )
+
+            if (
+                max_value is not None
+                and numeric_value > max_value
+            ):
+
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"{feature_name} above "
+                        f"maximum value"
+                    )
+                )
+
+            validated[feature_name] = numeric_value
+
+    return validated
+
+# ============================================================
+# 🗄️ LOG INFERENCE
+# ============================================================
+
+def log_inference(
+    request_json,
+    response_json,
+    prediction,
+    probability,
+    processing_time_ms
+):
     """
-    Realiza inferencia del tipo de cobertura forestal (Cover Type) usando uno o múltiples modelos previamente registrados.
-
-    Este endpoint recibe variables cartográficas y ambientales correspondientes a una celda de terreno de 30x30 metros
-    y retorna la predicción del tipo de bosque dominante.
-
-    Parámetros
-    ----------
-    models : List[model_class]
-        Lista de modelos a utilizar para la inferencia. Permite realizar inferencia comparativa o ensemble.
-        El selector se construye automáticamente desde los modelos disponibles.
-
-    Wilderness_Area : WildernessEnum
-        Área silvestre a la que pertenece la celda de terreno. Representa una codificación categórica one-hot
-        correspondiente a una de las cuatro zonas ecológicas del dataset.
-
-    Soil_Type : SoilEnum
-        Tipo de suelo dominante en la celda. Representa una codificación categórica one-hot de los 40 tipos de suelo
-        definidos en el dataset Covertype.
-
-    Elevation : float, default=2500
-        Elevación del terreno en metros sobre el nivel del mar.
-
-    Aspect : float, default=120
-        Orientación de la pendiente en grados azimutales (0–360). Determina la exposición solar del terreno.
-
-    Slope : float, default=10
-        Inclinación del terreno en grados.
-
-    Horizontal_Distance_To_Hydrology : float, default=100
-        Distancia horizontal en metros hasta la fuente de agua más cercana (río, lago o drenaje).
-
-    Vertical_Distance_To_Hydrology : float, default=20
-        Distancia vertical en metros respecto a la fuente de agua más cercana. Puede ser positiva o negativa.
-
-    Horizontal_Distance_To_Roadways : float, default=300
-        Distancia horizontal en metros hasta la vía o carretera más cercana.
-
-    Hillshade_9am : float, default=220
-        Índice de iluminación del terreno a las 9:00 AM. Representa sombreado simulado según topografía.
-
-    Hillshade_Noon : float, default=230
-        Índice de iluminación del terreno al mediodía.
-
-    Hillshade_3pm : float, default=200
-        Índice de iluminación del terreno a las 3:00 PM.
-
-    Horizontal_Distance_To_Fire_Points : float, default=500
-        Distancia horizontal en metros hasta el punto histórico de incendio forestal más cercano.
-
-    Retorna
-    -------
-    dict
-        Predicción del tipo de cobertura forestal para cada modelo solicitado, junto con posibles probabilidades
-        o métricas adicionales definidas por el servicio.
+    Stores inference into MySQL.
     """
 
-    df = pd.DataFrame([{
-        "Elevation": Elevation,
-        "Aspect": Aspect,
-        "Slope": Slope,
-        "Horizontal_Distance_To_Hydrology": Horizontal_Distance_To_Hydrology,
-        "Vertical_Distance_To_Hydrology": Vertical_Distance_To_Hydrology,
-        "Horizontal_Distance_To_Roadways": Horizontal_Distance_To_Roadways,
-        "Hillshade_9am": Hillshade_9am,
-        "Hillshade_Noon": Hillshade_Noon,
-        "Hillshade_3pm": Hillshade_3pm,
-        "Horizontal_Distance_To_Fire_Points": Horizontal_Distance_To_Fire_Points,
-        "Wilderness_Area": Wilderness_Area,
-        "Soil_Type": Soil_Type
-    }])
+    query = text("""
+    INSERT INTO inference_logs (
 
-    tree_model, tree_scaler = safe_load("models/decision_tree.pkl", bucket=bucket)
-    knn_model, knn_scaler = safe_load("models/knn.pkl", bucket=bucket)
-    svm_model, svm_scaler = safe_load("models/svm.pkl", bucket=bucket)
+        timestamp,
+        model_name,
+        model_version,
+        model_alias,
+        processing_time_ms,
+        prediction,
+        probability,
+        request_json,
+        response_json
+
+    ) VALUES (
+
+        :timestamp,
+        :model_name,
+        :model_version,
+        :model_alias,
+        :processing_time_ms,
+        :prediction,
+        :probability,
+        :request_json,
+        :response_json
+    )
+    """)
+
+    with ENGINE.begin() as conn:
+
+        conn.execute(
+            query,
+            {
+                "timestamp": datetime.utcnow(),
+                "model_name": MODEL_NAME,
+                "model_version": str(MODEL_VERSION),
+                "model_alias": MODEL_ALIAS,
+                "processing_time_ms": processing_time_ms,
+                "prediction": str(prediction),
+                "probability": float(probability),
+                "request_json": json.dumps(request_json),
+                "response_json": json.dumps(response_json)
+            }
+        )
+
+# ============================================================
+# 🚀 STARTUP
+# ============================================================
+
+@app.on_event("startup")
+def startup_event():
+
+    print("🚀 Starting inference API...")
+
+    create_inference_table()
+
+    try:
+
+        load_champion_model()
+
+    except Exception as e:
+
+        print(
+            "⚠️ No champion model available yet"
+        )
+
+        print(str(e))
+
+    print("✅ API ready")
+
+# ============================================================
+# ❤️ HEALTH
+# ============================================================
 
 
+@app.get("/health")
+def health():
 
-    models_dict = {
-        "TREE": {"model": tree_model, "scaler": tree_scaler},
-        "KNN": {"model": knn_model, "scaler": knn_scaler},
-        "SVM": {"model": svm_model, "scaler": svm_scaler},
+    # --------------------------------------------------------
+    # TRY REFRESH MODEL
+    # --------------------------------------------------------
+
+    refresh_model_if_needed()
+
+    return {
+        "status": (
+            "ok"
+            if MODEL is not None
+            else "degraded"
+        ),
+        "model_loaded": MODEL is not None,
+        "model_version": MODEL_VERSION,
+        "model_loaded_at": MODEL_LOADED_AT
     }
 
 
+# ============================================================
+# 🤖 MODEL INFO
+# ============================================================
 
+@app.get("/model-info")
+def model_info():
 
-    response = {}
+    return {
+        "model_name": MODEL_NAME,
+        "model_version": MODEL_VERSION,
+        "model_alias": MODEL_ALIAS,
+        "loaded_at": MODEL_LOADED_AT
+    }
 
-    if tree_model is None or knn_model is None:#or svm_model is None:
-        return {"error": f'Modelos no disponibles. Revise que esten subidos al bucket "{bucket}". Si "{bucket}" no existe, créelo, entrene los modelos e intente nuevamente.'}
-    else:
+# ============================================================
+# 📊 PROMETHEUS METRICS
+# ============================================================
 
-        for m in models:
+@app.get("/metrics")
+def metrics():
+    """
+    Dummy Prometheus endpoint.
+    """
 
-            model_name = m.value
-
-            prediction = predict_new_data(
-                df,
-                models_dict[model_name]["model"],
-                models_dict[model_name]["scaler"]
+    return JSONResponse(
+        content={
+            "message": (
+                "Prometheus metrics "
+                "not enabled yet"
             )
+        }
+    )
 
-            response[model_name] = prediction.tolist()
+# ============================================================
+# 🔮 PREDICT
+# ============================================================
 
-        return response
+@app.post("/predict")
+def predict(payload: dict):
+
+    # --------------------------------------------------------
+    # REFRESH MODEL
+    # --------------------------------------------------------
+
+    refresh_model_if_needed()
+
+    # --------------------------------------------------------
+    # TIMER
+    # --------------------------------------------------------
+
+    start_time = time.time()
+
+    if MODEL is None:
+
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "No champion model available"
+            )
+        )
+
+    # --------------------------------------------------------
+    # VALIDATE
+    # --------------------------------------------------------
+
+    validated_payload = validate_payload(
+        payload
+    )
+
+    # --------------------------------------------------------
+    # BUILD DATAFRAME
+    # --------------------------------------------------------
+
+    input_df = pd.DataFrame(
+        [validated_payload]
+    )
+
+    
+
+    # --------------------------------------------------------
+    # PREDICT
+    # --------------------------------------------------------
+
+    prediction = MODEL.predict(
+        input_df
+    )[0]
+
+    probability = (
+        MODEL.predict_proba(input_df)[0][1]
+    )
+
+    # --------------------------------------------------------
+    # PROCESSING TIME
+    # --------------------------------------------------------
+
+    processing_time_ms = (
+        time.time() - start_time
+    ) * 1000
+
+    # --------------------------------------------------------
+    # RESPONSE
+    # --------------------------------------------------------
+
+    response = {
+        "prediction": int(prediction),
+        "probability": float(probability),
+        "model_name": MODEL_NAME,
+        "model_version": MODEL_VERSION,
+        "model_alias": MODEL_ALIAS,
+        "processing_time_ms": round(
+            processing_time_ms,
+            2
+        )
+    }
+
+    # --------------------------------------------------------
+    # LOG INFERENCE
+    # --------------------------------------------------------
+
+    log_inference(
+        request_json=payload,
+        response_json=response,
+        prediction=prediction,
+        probability=probability,
+        processing_time_ms=processing_time_ms
+    )
+
+    return response

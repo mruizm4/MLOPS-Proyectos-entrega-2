@@ -8,4 +8,7 @@ python-multipart==0.0.6
 pymysql==1.1.0
 sqlalchemy>=1.4.28,<2.0
 mysql-connector-python==8.3.0
-boto3
+boto3==1.43.6
+catboost==1.2.10
+minio==7.2.20
+mlflow==3.12.0

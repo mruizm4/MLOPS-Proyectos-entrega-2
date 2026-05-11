@@ -300,11 +300,10 @@ services:
         condition: service_completed_successfully
 
 
-
   mysql_db:
     image: mysql:8.0
     container_name: mysql_mlops
-  
+
     command:
       --log-bin-trust-function-creators=1
 
@@ -324,6 +323,21 @@ services:
     networks:
       - mlops_net
 
+    healthcheck:
+      test: [
+        "CMD",
+        "mysqladmin",
+        "ping",
+        "-h",
+        "localhost",
+        "-u",
+        "root",
+        "-proot"
+      ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
 
 #  db_loader:
 #    build:
@@ -392,36 +406,52 @@ services:
 #      - mlops_net
 #    restart: unless-stopped
 
-#  api-inference:
-#    build:
-#      context: ./inference_api
-#      dockerfile: Dockerfile.inference_api
-#    container_name: covertype-inference-api
-#    ports:
-#      - "8001:8001"
-#    depends_on:
-#      - minio
-#      - airflow-init
-#    environment:
-#      - AWS_ACCESS_KEY_ID=admin
-#      - AWS_SECRET_ACCESS_KEY=supersecret
-#      - AWS_DEFAULT_REGION=us-east-1
-#      - MLFLOW_TRACKING_URI=http://mlflow:5000
-#      - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
-#      - MINIO_ENDPOINT=http://minio:9000
-#    volumes:
-#      - ./inference_api:/app
-#      - ./encoders:/app/encoders
-#      - ./logs:/app/logs
-#    networks: 
-#      - minio-net
-#      - mlops_net
+  api-inference:
+    build:
+      context: ./inference_api
+      dockerfile: Dockerfile.inference_api
+
+    container_name: api-inference
+    ports:
+      - "8001:8001"
+
+    depends_on:
+
+      mysql_db:
+        condition: service_healthy
+
+      mlflow:
+        condition: service_healthy
+
+      minio:
+        condition: service_started
+
+      airflow-init:
+        condition: service_started
+
+    environment:
+      - AWS_ACCESS_KEY_ID=admin
+      - AWS_SECRET_ACCESS_KEY=supersecret
+      - AWS_DEFAULT_REGION=us-east-1
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
+      - MINIO_ENDPOINT=http://minio:9000
+
+    volumes:
+      - ./inference_api:/app
+      - ./encoders:/app/encoders
+      - ./logs:/app/logs
+
+    networks:
+      - minio-net
+      - mlops_net
+
   mlflow:
     build:
       context: ./mlflow_compose/mlflow
       dockerfile: Dockerfile
 
-    container_name: MLflow
+    container_name: mlflow
 
     environment:
       MLFLOW_S3_ENDPOINT_URL: http://minio:9000
@@ -429,16 +459,49 @@ services:
       AWS_SECRET_ACCESS_KEY: supersecret
 
     depends_on:
-      - mysql_db
-      - minio
+
+      mysql_db:
+        condition: service_healthy
+
+      minio:
+        condition: service_started
+
+      airflow-init:
+        condition: service_started
 
     ports:
       - "5000:5000"
+
+    healthcheck:
+      test: [
+        "CMD",
+        "curl",
+        "-f",
+        "http://localhost:5000"
+      ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
 
     networks:
       - mlops_net
 
     restart: always
+
+
+  locust:
+    build:
+      context: ./locust/
+      dockerfile: Dockerfile.locust
+    container_name: locust
+    ports:
+      - "8089:8089"
+    environment:
+      - LOCUST_HOST=http://api-inference:8001
+    networks:
+      - mlops_net
+
 volumes:
   postgres-db-volume:
   data:

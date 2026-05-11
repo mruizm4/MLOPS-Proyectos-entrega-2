@@ -300,9 +300,13 @@ services:
         condition: service_completed_successfully
 
 
+
   mysql_db:
     image: mysql:8.0
     container_name: mysql_mlops
+
+    command:
+      --log-bin-trust-function-creators=1
 
     environment:
       MYSQL_ROOT_PASSWORD: root
@@ -315,22 +319,25 @@ services:
 
     volumes:
       - mysql_data:/var/lib/mysql
-    networks:
-      - mlops_net
-
-  db_loader:
-    build:
-      context: ./mysql_db
-      dockerfile: Dockerfile.mysql_db
-
-    depends_on:
-      - mysql_db
-      - get_data_api
+      - ./mysql_db/init_mlflow.sql:/docker-entrypoint-initdb.d/init_mlflow.sql
 
     networks:
       - mlops_net
 
-    restart: on-failure
+
+#  db_loader:
+#    build:
+#      context: ./mysql_db
+#      dockerfile: Dockerfile.mysql_db
+#
+#    depends_on:
+#      - mysql_db
+#      - get_data_api
+#
+#    networks:
+#      - mlops_net
+#
+#    restart: on-failure
 
   get_data_api:
     build:
@@ -362,75 +369,76 @@ services:
       - mlops_net
     restart: unless-stopped
 
-  jupyter:
-    build:
-      context: .
-      dockerfile: mlflow_compose/notebooks/Dockerfile.jupyter
-    container_name: jupyter-notebook
-    ports:
-      - "8888:8888"
-    environment:
-      - JUPYTER_ENABLE_LAB=yes
-      - JUPYTER_TOKEN=minio123
-      - AWS_ACCESS_KEY_ID=admin
-      - AWS_SECRET_ACCESS_KEY=supersecret
-      - AWS_DEFAULT_REGION=us-east-1
-      - MINIO_ENDPOINT=http://minio:9000
-    volumes:
-      - ./MinIO_ObjectStore/notebooks:/home/jovyan/work
-    depends_on:
-      - minio
-    networks:
-      - minio-net
-      - mlops_net
-    restart: unless-stopped
+#  jupyter:
+#    build:
+#      context: .
+#      dockerfile: mlflow_compose/notebooks/Dockerfile.jupyter
+#    container_name: jupyter-notebook
+#    ports:
+#      - "8888:8888"
+#    environment:
+#      - JUPYTER_ENABLE_LAB=yes
+#      - JUPYTER_TOKEN=minio123
+#      - AWS_ACCESS_KEY_ID=admin
+#      - AWS_SECRET_ACCESS_KEY=supersecret
+#      - AWS_DEFAULT_REGION=us-east-1
+#      - MINIO_ENDPOINT=http://minio:9000
+#    volumes:
+#      - ./MinIO_ObjectStore/notebooks:/home/jovyan/work
+#    depends_on:
+#      - minio
+#    networks:
+#      - minio-net
+#      - mlops_net
+#    restart: unless-stopped
 
-  api-inference:
-    build:
-      context: ./inference_api
-      dockerfile: Dockerfile.inference_api
-    container_name: covertype-inference-api
-    ports:
-      - "8001:8001"
-    depends_on:
-      - minio
-      - airflow-init
-    environment:
-      - AWS_ACCESS_KEY_ID=admin
-      - AWS_SECRET_ACCESS_KEY=supersecret
-      - AWS_DEFAULT_REGION=us-east-1
-      - MLFLOW_TRACKING_URI=http://mlflow:5000
-      - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
-      - MINIO_ENDPOINT=http://minio:9000
-    volumes:
-      - ./inference_api:/app
-      - ./encoders:/app/encoders
-      - ./logs:/app/logs
-    networks: 
-      - minio-net
-      - mlops_net
-
+#  api-inference:
+#    build:
+#      context: ./inference_api
+#      dockerfile: Dockerfile.inference_api
+#    container_name: covertype-inference-api
+#    ports:
+#      - "8001:8001"
+#    depends_on:
+#      - minio
+#      - airflow-init
+#    environment:
+#      - AWS_ACCESS_KEY_ID=admin
+#      - AWS_SECRET_ACCESS_KEY=supersecret
+#      - AWS_DEFAULT_REGION=us-east-1
+#      - MLFLOW_TRACKING_URI=http://mlflow:5000
+#      - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
+#      - MINIO_ENDPOINT=http://minio:9000
+#    volumes:
+#      - ./inference_api:/app
+#      - ./encoders:/app/encoders
+#      - ./logs:/app/logs
+#    networks: 
+#      - minio-net
+#      - mlops_net
   mlflow:
     build:
       context: ./mlflow_compose/mlflow
-      # Assuming Dockerfile is in the mlflow directory
       dockerfile: Dockerfile
+
     container_name: MLflow
+
     environment:
       MLFLOW_S3_ENDPOINT_URL: http://minio:9000
       AWS_ACCESS_KEY_ID: admin
       AWS_SECRET_ACCESS_KEY: supersecret
+
     depends_on:
+      - mysql_db
       - minio
+
     ports:
-      - 5000:5000
-    volumes:
-      - ./mlflowdb:/app/mlflowdb
+      - "5000:5000"
 
     networks:
       - mlops_net
-    restart: always 
 
+    restart: always
 volumes:
   postgres-db-volume:
   data:

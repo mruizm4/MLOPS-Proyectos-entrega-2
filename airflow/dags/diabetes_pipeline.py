@@ -59,6 +59,11 @@ with DAG(
         python_callable=task_split_data,
     )
 
+    ensure_bucket = PythonOperator(
+        task_id="ensure_bucket",
+        python_callable=ensure_minio_bucket,
+    )
+
     train_model = PythonOperator(
         task_id="train_model",
         python_callable=task_train_model,
@@ -81,6 +86,7 @@ with DAG(
         >> preprocess
         >> store_clean
         >> split_data
+        >> ensure_bucket
         >> train_model
         >> register_model
         >> promote_model

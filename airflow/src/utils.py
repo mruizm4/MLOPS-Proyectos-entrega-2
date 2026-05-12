@@ -55,7 +55,7 @@ MYSQL_PASSWORD = "mlops_pass"
 MLFLOW_TRACKING_URI = "http://mlflow:5000"
 MLFLOW_EXPERIMENT = "diabetes_readmission"
 
-MINIO_ENDPOINT = "http://minio:9000"
+MINIO_ENDPOINT = "minio:9000"
 MINIO_ACCESS_KEY = "admin"
 MINIO_SECRET_KEY = "supersecret"
 
@@ -78,7 +78,7 @@ DROP_COLUMNS = [
 # -----------------------------
 # API CONFIG
 # -----------------------------
-API_BASE_URL = "http://localhost:8003"
+API_BASE_URL = "http://fastapi:8003"
 
 HEALTH_ENDPOINT = f"{API_BASE_URL}/health"
 BATCH_ENDPOINT = f"{API_BASE_URL}/batch"
@@ -1424,7 +1424,7 @@ def register_model(
 
         mlflow.catboost.log_model(
             cb_model=model,
-            name="model",
+            artifact_path="model",
             registered_model_name="diabetes_catboost_model",
             signature=signature,
             input_example=X_example.head(3)
@@ -1789,6 +1789,8 @@ def task_compare_and_promote():
     """
 
     print("\n===== TASK 9-10: COMPARE AND PROMOTE =====")
+    
+    setup_mlflow()
 
     client = MlflowClient()
 

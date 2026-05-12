@@ -55,6 +55,7 @@ x-airflow-common:
   networks:
     - default
     - mlops_net
+    - minio-net
   environment:
     &airflow-common-env
     PYTHONPATH: /opt/airflow

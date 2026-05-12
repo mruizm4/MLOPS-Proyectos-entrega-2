@@ -12,3 +12,5 @@ boto3==1.43.6
 catboost==1.2.10
 minio==7.2.20
 mlflow==3.12.0
+prometheus-client
+prometheus-fastapi-instrumentator

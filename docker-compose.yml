@@ -416,6 +416,7 @@ services:
       - "8001:8001"
 
     depends_on:
+      
 
       mysql_db:
         condition: service_healthy
@@ -428,6 +429,8 @@ services:
 
       airflow-init:
         condition: service_started
+      
+      
 
     environment:
       - AWS_ACCESS_KEY_ID=admin
@@ -502,12 +505,80 @@ services:
     networks:
       - mlops_net
 
+  streamlit-ui:
+    build:
+      context: ./streamlit_ui
+      dockerfile: Dockerfile.streamlit_ui
+
+    container_name: diabetes-streamlit-ui
+
+    ports:
+      - "8501:8501"
+
+    depends_on:
+      - api-inference
+
+    networks:
+      - mlops_net
+
+  node-exporter:
+    image: prom/node-exporter
+    container_name: node-exporter
+
+    ports:
+      - "9100:9100"
+
+    networks:
+      - mlops_net
+
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+
+    ports:
+      - "9090:9090"
+
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+
+    networks:
+      - mlops_net
+
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+
+    ports:
+      - "3000:3000"
+
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    
+    depends_on:
+      - prometheus
+
+    networks:
+      - mlops_net
+
+    restart: unless-stopped
+
 volumes:
   postgres-db-volume:
   data:
   mysql_data:
   minio_data:
     driver: local
+  grafana_data:
 
 networks:
   minio-net:

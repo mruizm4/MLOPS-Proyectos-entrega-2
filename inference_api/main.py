@@ -13,6 +13,19 @@ import pandas as pd
 import mlflow
 import mlflow.catboost
 
+from prometheus_fastapi_instrumentator import (
+    Instrumentator
+)
+
+from prometheus_client import (
+    Counter,
+    Histogram,
+    Gauge,
+    generate_latest,
+    CONTENT_TYPE_LATEST
+)
+
+
 from mlflow.tracking import MlflowClient
 
 from sqlalchemy import (
@@ -58,6 +71,42 @@ MODEL_ALIAS = "champion"
 MODEL_REFRESH_INTERVAL = 1
 
 # ============================================================
+# 📊 PROMETHEUS METRICS
+# ============================================================
+
+REQUEST_COUNT = Counter(
+    "inference_requests_total",
+    "Total inference requests"
+)
+
+PREDICTION_COUNT = Counter(
+    "predictions_total",
+    "Total successful predictions"
+)
+
+PREDICTION_ERRORS = Counter(
+    "prediction_errors_total",
+    "Total prediction errors"
+)
+
+REQUEST_LATENCY = Histogram(
+    "prediction_latency_seconds",
+    "Prediction latency"
+)
+
+MODEL_LOADED = Gauge(
+    "model_loaded",
+    "Whether a model is loaded"
+)
+
+MODEL_VERSION_GAUGE =Gauge(
+    "model_info",
+    "Current loaded model",
+    ["model_name", "model_version", "model_alias"]
+)
+
+
+# ============================================================
 # 🚀 FASTAPI
 # ============================================================
 
@@ -65,6 +114,8 @@ app = FastAPI(
     title="Diabetes Inference API",
     version="1.0.0"
 )
+
+Instrumentator().instrument(app).expose(app)
 
 # ============================================================
 # 🌎 GLOBALS
@@ -203,6 +254,18 @@ def load_champion_model():
 
     MODEL_LOADED_AT = datetime.utcnow()
 
+
+    MODEL_LOADED.set(1)
+
+    try:
+        MODEL_VERSION_GAUGE.labels(
+            model_name=MODEL_NAME,
+            model_version=str(MODEL_VERSION),
+            model_alias=MODEL_ALIAS
+        ).set(1)
+    except:
+        pass
+
     print(
         f"✅ Champion model loaded "
         f"(version={version})"
@@ -293,6 +356,8 @@ def refresh_model_if_needed():
         print(
             "⚠️ Could not refresh model"
         )
+
+        MODEL_LOADED.set(0)
 
         print(str(e))
 
@@ -471,6 +536,7 @@ def startup_event():
 
     create_inference_table()
 
+
     try:
 
         load_champion_model()
@@ -526,24 +592,15 @@ def model_info():
     }
 
 # ============================================================
-# 📊 PROMETHEUS METRICS
+# 📊 PROMETHEUS METRICS ENDPOINT
 # ============================================================
 
 @app.get("/metrics")
 def metrics():
-    """
-    Dummy Prometheus endpoint.
-    """
-
-    return JSONResponse(
-        content={
-            "message": (
-                "Prometheus metrics "
-                "not enabled yet"
-            )
-        }
+    return Response(
+        generate_latest(),
+        media_type=CONTENT_TYPE_LATEST
     )
-
 # ============================================================
 # 🔮 PREDICT
 # ============================================================
@@ -551,91 +608,104 @@ def metrics():
 @app.post("/predict")
 def predict(payload: dict):
 
-    # --------------------------------------------------------
-    # REFRESH MODEL
-    # --------------------------------------------------------
+    start_time = time.time()
+    REQUEST_COUNT.inc()
+
+    try:
+
+        refresh_model_if_needed()
+
+        if MODEL is None:
+
+            PREDICTION_ERRORS.inc()
+            ERROR_COUNT.inc()
+            raise HTTPException(
+                status_code=503,
+                detail="No champion model available"
+            )
+
+        validated_payload = validate_payload(
+            payload
+        )
+
+        input_df = pd.DataFrame(
+            [validated_payload]
+        )
+
+        prediction = MODEL.predict(
+            input_df
+        )[0]
+
+        PREDICTION_COUNT.inc()
+
+        probability = (
+            MODEL.predict_proba(input_df)[0][1]
+        )
+
+        processing_time_ms = (
+            time.time() - start_time
+        ) * 1000
+
+
+
+        # ----------------------------------------------------
+        # PROMETHEUS
+        # ----------------------------------------------------
+
+        
+
+        REQUEST_LATENCY.observe(
+            processing_time_ms / 1000
+        )
+        response = {
+            "prediction": int(prediction),
+            "probability": float(probability),
+            "model_name": MODEL_NAME,
+            "model_version": MODEL_VERSION,
+            "model_alias": MODEL_ALIAS,
+            "processing_time_ms": round(
+                processing_time_ms,
+                2
+            )
+        }
+
+        log_inference(
+            request_json=payload,
+            response_json=response,
+            prediction=prediction,
+            probability=probability,
+            processing_time_ms=processing_time_ms
+        )
+
+        return response
+
+    except Exception:
+
+        PREDICTION_ERRORS.inc()
+
+        raise
+
+
+# ============================================================
+# 📦 FEATURE METADATA
+# ============================================================
+
+@app.get("/feature-metadata")
+def feature_metadata():
 
     refresh_model_if_needed()
 
-    # --------------------------------------------------------
-    # TIMER
-    # --------------------------------------------------------
-
-    start_time = time.time()
-
-    if MODEL is None:
+    if FEATURE_METADATA is None:
 
         raise HTTPException(
             status_code=503,
             detail=(
-                "No champion model available"
+                "No feature metadata available"
             )
         )
 
-    # --------------------------------------------------------
-    # VALIDATE
-    # --------------------------------------------------------
-
-    validated_payload = validate_payload(
-        payload
-    )
-
-    # --------------------------------------------------------
-    # BUILD DATAFRAME
-    # --------------------------------------------------------
-
-    input_df = pd.DataFrame(
-        [validated_payload]
-    )
-
-    
-
-    # --------------------------------------------------------
-    # PREDICT
-    # --------------------------------------------------------
-
-    prediction = MODEL.predict(
-        input_df
-    )[0]
-
-    probability = (
-        MODEL.predict_proba(input_df)[0][1]
-    )
-
-    # --------------------------------------------------------
-    # PROCESSING TIME
-    # --------------------------------------------------------
-
-    processing_time_ms = (
-        time.time() - start_time
-    ) * 1000
-
-    # --------------------------------------------------------
-    # RESPONSE
-    # --------------------------------------------------------
-
-    response = {
-        "prediction": int(prediction),
-        "probability": float(probability),
+    return {
         "model_name": MODEL_NAME,
         "model_version": MODEL_VERSION,
-        "model_alias": MODEL_ALIAS,
-        "processing_time_ms": round(
-            processing_time_ms,
-            2
-        )
+        "features": FEATURE_METADATA
     }
-
-    # --------------------------------------------------------
-    # LOG INFERENCE
-    # --------------------------------------------------------
-
-    log_inference(
-        request_json=payload,
-        response_json=response,
-        prediction=prediction,
-        probability=probability,
-        processing_time_ms=processing_time_ms
-    )
-
-    return response

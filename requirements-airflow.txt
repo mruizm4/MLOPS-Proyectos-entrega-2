@@ -5,3 +5,9 @@ pandas==2.0.3
 scikit-learn==1.3.2  # ← VERSIÓN FIJA
 numpy==1.24.3
 joblib==1.3.2
+catboost==1.2.10
+minio==7.2.20
+mlflow==3.12.0
+boto3==1.43.6
+python-multipart==0.0.6
+email-validator>=2.0

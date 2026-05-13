@@ -1,0 +1,162 @@
+services:
+  mysql_db:
+    image: mysql:8.0
+
+    command:
+      --log-bin-trust-function-creators=1
+
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: mlops_db
+      MYSQL_USER: mlops_user
+      MYSQL_PASSWORD: mlops_pass
+
+    ports:
+      - "3306:3306"
+
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql_db/init_mlflow.sql:/docker-entrypoint-initdb.d/init_mlflow.sql
+
+    healthcheck:
+      test: [
+        "CMD",
+        "mysqladmin",
+        "ping",
+        "-h",
+        "localhost",
+        "-u",
+        "root",
+        "-proot"
+      ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  get_data_api:
+    build:
+      context: ./api_datos
+      dockerfile: Dockerfile.api_datos
+    ports:
+      - '8003:8003'
+    volumes:
+      - ./api_datos/data:/data
+
+  minio:
+    image: quay.io/minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: supersecret
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+
+  api-inference:
+    build:
+      context: ./inference_api
+      dockerfile: Dockerfile.inference_api
+    ports:
+      - "8001:8001"
+  
+    environment:
+      - AWS_ACCESS_KEY_ID=admin
+      - AWS_SECRET_ACCESS_KEY=supersecret
+      - AWS_DEFAULT_REGION=us-east-1
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
+      - MINIO_ENDPOINT=http://minio:9000
+
+    volumes:
+      - ./inference_api:/app
+      - ./encoders:/app/encoders
+      - ./logs:/app/logs
+
+
+  mlflow:
+    build:
+      context: ./mlflow_compose/mlflow
+      dockerfile: Dockerfile
+
+    environment:
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: admin
+      AWS_SECRET_ACCESS_KEY: supersecret
+
+    ports:
+      - "5000:5000"
+
+    healthcheck:
+      test: [
+        "CMD",
+        "curl",
+        "-f",
+        "http://localhost:5000"
+      ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  locust:
+    build:
+      context: ./locust/
+      dockerfile: Dockerfile.locust
+    ports:
+      - "8089:8089"
+    environment:
+      - LOCUST_HOST=http://api-inference:8001
+
+  streamlit-ui:
+    build:
+      context: ./streamlit_ui
+      dockerfile: Dockerfile.streamlit_ui
+
+    ports:
+      - "8501:8501"
+
+  node-exporter:
+    image: prom/node-exporter
+    container_name: node-exporter
+
+    ports:
+      - "9100:9100"
+
+  prometheus:
+    image: prom/prometheus
+    ports:
+      - "9090:9090"
+
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+
+  grafana:
+    image: grafana/grafana
+
+    ports:
+      - "3000:3000"
+
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+
+volumes:
+  postgres-db-volume:
+  data:
+  mysql_data:
+  minio_data:
+    driver: local
+  grafana_data:
+
+networks:
+  minio-net:
+      driver: bridge
+  mlops_net:

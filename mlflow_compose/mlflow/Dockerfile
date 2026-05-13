@@ -25,7 +25,7 @@ EXPOSE 5000
 CMD ["mlflow", "server", \
      "--host", "0.0.0.0", \
      "--port", "5000", \
-     "--backend-store-uri", "mysql+pymysql://mlops_user:mlops_pass@mysql_db:3306/mlflow_db", \
+     "--backend-store-uri", "mysql+pymysql://mlops_user:mlops_pass@mysql-db:3306/mlflow_db", \
      "--default-artifact-root", "s3://mlflow-artifacts", \
      "--serve-artifacts", \
      "--allowed-hosts", "*"]

@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  name: api-inference
+
+  labels:
+    io.kompose.service: api-inference
+
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      io.kompose.service: api-inference
+
+  strategy:
+    type: Recreate
+
+  template:
+    metadata:
+      labels:
+        io.kompose.service: api-inference
+
+    spec:
+      containers:
+
+        - name: api-inference
+
+          image: karabaharesu/api-inference:2.0
+          imagePullPolicy: Always
+
+          ports:
+            - containerPort: 8001
+              protocol: TCP
+
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              value: admin
+
+            - name: AWS_SECRET_ACCESS_KEY
+              value: supersecret
+
+            - name: AWS_DEFAULT_REGION
+              value: us-east-1
+
+            - name: MINIO_ENDPOINT
+              value: http://minio:9000
+
+            - name: MLFLOW_S3_ENDPOINT_URL
+              value: http://minio:9000
+
+            - name: MLFLOW_TRACKING_URI
+              value: http://mlflow:5000
+
+          volumeMounts:
+            - mountPath: /app/logs
+              name: api-inference-claim2
+
+      restartPolicy: Always
+
+      volumes:
+        - name: api-inference-claim2
+          persistentVolumeClaim:
+            claimName: api-inference-claim2

@@ -37,6 +37,9 @@ from fastapi import (
     FastAPI,
     HTTPException
 )
+import random
+
+from fastapi.responses import Response
 
 from fastapi.responses import JSONResponse
 
@@ -48,7 +51,7 @@ from fastapi.responses import JSONResponse
 # MYSQL
 # ----------------------------------------
 
-MYSQL_HOST = "mysql_db"
+MYSQL_HOST = "mysql-db"
 MYSQL_PORT = 3306
 MYSQL_DB = "mlops_db"
 MYSQL_USER = "mlops_user"
@@ -708,4 +711,105 @@ def feature_metadata():
         "model_name": MODEL_NAME,
         "model_version": MODEL_VERSION,
         "features": FEATURE_METADATA
+    }
+
+
+# ============================================================
+# 🎲 RANDOM VALID PAYLOAD
+# ============================================================
+
+@app.get("/sample-payload")
+def sample_payload():
+    """
+    Returns a valid payload using feature_metadata.
+    Useful for testing and load testing.
+    """
+
+    refresh_model_if_needed()
+
+    if FEATURE_METADATA is None:
+
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "No feature metadata available"
+            )
+        )
+
+    sample = {}
+
+    # --------------------------------------------------------
+    # GENERATE VALID VALUES
+    # --------------------------------------------------------
+
+    for feature_name, metadata in (
+        FEATURE_METADATA.items()
+    ):
+
+        # ----------------------------------------------------
+        # CATEGORICAL
+        # ----------------------------------------------------
+
+        if metadata["type"] == "categorical":
+
+            values = metadata["values"]
+
+            if not values:
+
+                sample[feature_name] = ""
+
+            else:
+
+                sample[feature_name] = (
+                    random.choice(values)
+                )
+
+        # ----------------------------------------------------
+        # NUMERIC
+        # ----------------------------------------------------
+
+        else:
+
+            min_value = metadata["min"]
+            max_value = metadata["max"]
+
+            # safety fallback
+            if (
+                min_value is None
+                or max_value is None
+            ):
+
+                sample[feature_name] = 0
+
+            else:
+
+                # integer-like values
+                if (
+                    float(min_value).is_integer()
+                    and float(max_value).is_integer()
+                ):
+
+                    sample[feature_name] = (
+                        random.randint(
+                            int(min_value),
+                            int(max_value)
+                        )
+                    )
+
+                # float values
+                else:
+
+                    sample[feature_name] = round(
+                        random.uniform(
+                            float(min_value),
+                            float(max_value)
+                        ),
+                        4
+                    )
+
+    return {
+        "model_name": MODEL_NAME,
+        "model_version": MODEL_VERSION,
+        "model_alias": MODEL_ALIAS,
+        "payload": sample
     }

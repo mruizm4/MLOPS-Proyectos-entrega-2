@@ -23,7 +23,7 @@ DATASET_ZIP_URL = (
     "296/diabetes+130-us+hospitals+for+years+1999-2008.zip"
 )
 
-BATCH_SIZE = 1000
+BATCH_SIZE = 4000
 
 ID_MAPPING_COLUMNS = [
     "admission_type_id",

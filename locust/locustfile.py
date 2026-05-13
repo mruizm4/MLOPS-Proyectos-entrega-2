@@ -1,112 +1,64 @@
 from locust import HttpUser, task, between
 
 # ============================================================
-# FIXED PAYLOAD
-# ============================================================
-
-PAYLOAD = {
-  "race": "Other",
-  "gender": "Female",
-  "age": "[70-80)",
-  "weight": "[75-100)",
-  "admission_type_id": "Elective",
-  "discharge_disposition_id": "Discharged/transferred to another rehab fac including rehab units of a hospital .",
-  "admission_source_id": "Physician Referral",
-  "time_in_hospital": 4,
-  "payer_code": "HM",
-  "medical_specialty": "Surgery-Neuro",
-  "num_lab_procedures": 79,
-  "num_procedures": 5,
-  "num_medications": 45,
-  "number_outpatient": 0,
-  "number_emergency": 0,
-  "number_inpatient": 6,
-  "diag_1": "724",
-  "diag_2": "396",
-  "diag_3": "281",
-  "number_diagnoses": 4,
-  "max_glu_serum": "Norm",
-  "a1cresult": ">7",
-  "metformin": "Steady",
-  "repaglinide": "Steady",
-  "nateglinide": "Up",
-  "chlorpropamide": "No",
-  "glimepiride": "No",
-  "acetohexamide": "No",
-  "glipizide": "Up",
-  "glyburide": "Steady",
-  "tolbutamide": "No",
-  "pioglitazone": "No",
-  "rosiglitazone": "No",
-  "acarbose": "Steady",
-  "miglitol": "No",
-  "troglitazone": "No",
-  "tolazamide": "No",
-  "examide": "No",
-  "citoglipton": "No",
-  "insulin": "No",
-  "glyburide_metformin": "Steady",
-  "glipizide_metformin": "No",
-  "glimepiride_pioglitazone": "No",
-  "metformin_rosiglitazone": "No",
-  "metformin_pioglitazone": "No",
-  "change": "No",
-  "diabetesmed": "No"
-}
-
-# ============================================================
 # LOCUST USER
 # ============================================================
 
 class UsuarioDeCarga(HttpUser):
 
-    wait_time = between(1, 2.5)
+    wait_time = between(0.1, 0.5)
 
     # --------------------------------------------------------
-    # HEALTH
+    # ON START
     # --------------------------------------------------------
 
-    @task(1)
-    def health(self):
+    def on_start(self):
+        """
+        Fetch one valid payload from API.
+        """
 
-        self.client.get("/health")
+        self.payload = None
 
-    # --------------------------------------------------------
-    # MODEL INFO
-    # --------------------------------------------------------
+        response = self.client.get(
+            "/sample-payload"
+        )
 
-    @task(1)
-    def model_info(self):
+        if response.status_code == 200:
 
-        self.client.get("/model-info")
+            self.payload = (
+                response.json()["payload"]
+            )
+
+            print(
+                "✅ Payload loaded"
+            )
+
+        else:
+
+            print(
+                "❌ Could not load payload"
+            )
 
     # --------------------------------------------------------
     # PREDICT
     # --------------------------------------------------------
 
-    @task(5)
+    @task
     def hacer_inferencia(self):
+
+        if self.payload is None:
+
+            return
 
         response = self.client.post(
             "/predict",
-            json=PAYLOAD
+            json=self.payload
         )
 
         if response.status_code != 200:
 
             print(
-                "❌ Error en inferencia:"
+                "❌ Error:"
             )
 
             print(response.text)
-
-        else:
-
-            result = response.json()
-
-            print(
-                "✅ Prediction:",
-                result["prediction"],
-                "| Prob:",
-                result["probability"]
-            )

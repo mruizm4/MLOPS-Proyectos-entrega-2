@@ -36,32 +36,30 @@ from datetime import datetime
 from typing import List, Dict, Optional
 
 # MinIO / S3
-os.environ["MLFLOW_S3_ENDPOINT_URL"] = "http://minio:9000"
+os.environ["MLFLOW_S3_ENDPOINT_URL"] = os.environ.get("MLFLOW_S3_ENDPOINT_URL", "http://minio:9000")
 
 # Credenciales MinIO
-os.environ["AWS_ACCESS_KEY_ID"] = "admin"
-os.environ["AWS_SECRET_ACCESS_KEY"] = "supersecret"
+os.environ["AWS_ACCESS_KEY_ID"] = os.environ.get("AWS_ACCESS_KEY_ID")
+os.environ["AWS_SECRET_ACCESS_KEY"] = os.environ.get("AWS_SECRET_ACCESS_KEY")
 
 # Opcional pero recomendado para MinIO
-os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
+os.environ["AWS_DEFAULT_REGION"] = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
 
 
-MYSQL_HOST = "mysql_db"
-MYSQL_PORT = 3306
-MYSQL_DB = "mlops_db"
-MYSQL_USER = "mlops_user"
-MYSQL_PASSWORD = "mlops_pass"
+MYSQL_HOST = os.environ.get("MYSQL_HOST", "mysql_db")
+MYSQL_PORT = os.environ.get("MYSQL_PORT", "3306")
+MYSQL_DB = os.environ.get("MYSQL_DATABASE")
+MYSQL_USER = os.environ.get("MYSQL_USER", "mlops_user")
+MYSQL_PASSWORD = os.environ.get("MYSQL_PASSWORD", "mlops_pass")
 
-MLFLOW_TRACKING_URI = "http://mlflow:5000"
-MLFLOW_EXPERIMENT = "diabetes_readmission"
+MLFLOW_TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", "http://mlflow:5000")
+MLFLOW_EXPERIMENT = os.environ.get("MLFLOW_EXPERIMENT", "diabetes_readmission_experiment")
 
-MINIO_ENDPOINT = "minio:9000"
-MINIO_ACCESS_KEY = "admin"
-MINIO_SECRET_KEY = "supersecret"
+MINIO_ENDPOINT = os.environ.get("MINIO_ENDPOINT", "minio:9000") 
+MINIO_ACCESS_KEY = os.environ.get("MINIO_ROOT_USER")
+MINIO_SECRET_KEY = os.environ.get("MINIO_ROOT_PASSWORD")
 
-MINIO_BUCKET = "mlflow-artifacts"
-
-CLEAN_TABLE = "dataset_split"
+MINIO_BUCKET = os.environ.get("MINIO_BUCKET", "mlflow-artifacts")
 
 TARGET_COLUMN = "target"
 
@@ -78,7 +76,8 @@ DROP_COLUMNS = [
 # -----------------------------
 # API CONFIG
 # -----------------------------
-API_BASE_URL = "http://fastapi:8003"
+API_BASE_URL = os.environ.get("API_BASE_URL", "http://fastapi:8003")
+
 
 HEALTH_ENDPOINT = f"{API_BASE_URL}/health"
 BATCH_ENDPOINT = f"{API_BASE_URL}/batch"
@@ -98,9 +97,9 @@ DATABASE_URL = (
 # -----------------------------
 BATCH_SIZE = 1000
 
-RAW_TABLE = "raw_diabetes_data"
-CLEAN_TABLE = "clean_diabetes_data"
-SPLIT_TABLE = "dataset_split"
+RAW_TABLE = os.environ.get("RAW_TABLE")
+CLEAN_TABLE = os.environ.get("CLEAN_TABLE")
+SPLIT_TABLE = os.environ.get("SPLIT_TABLE")
 
 # porcentaje splits
 TRAIN_SIZE = 0.7

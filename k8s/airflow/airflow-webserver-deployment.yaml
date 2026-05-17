@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  name: airflow-webserver
+
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: airflow-webserver
+
+  template:
+    metadata:
+      labels:
+        app: airflow-webserver
+
+    spec:
+      containers:
+        - name: airflow-webserver
+
+          image: karabaharesu/mlops-airflow:latest
+          imagePullPolicy: Always
+
+          command:
+            - airflow
+
+          args:
+            - webserver
+
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+
+          env:
+            - name: AIRFLOW__CORE__EXECUTOR
+              value: CeleryExecutor
+
+            - name: AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
+              value: postgresql+psycopg2://airflow:airflow@postgres/airflow
+
+            - name: AIRFLOW__CELERY__RESULT_BACKEND
+              value: db+postgresql://airflow:airflow@postgres/airflow
+
+            - name: AIRFLOW__CELERY__BROKER_URL
+              value: redis://redis:6379/0
+
+            - name: AIRFLOW__CORE__FERNET_KEY
+              value: ""
+
+            - name: AIRFLOW__CORE__LOAD_EXAMPLES
+              value: "False"
+
+            - name: AIRFLOW__API__AUTH_BACKENDS
+              value: airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session
+
+            - name: PYTHONPATH
+              value: /opt/airflow
+
+            - name: AIRFLOW__LOGGING__BASE_LOG_FOLDER
+              value: /opt/airflow/logs
+
+            - name: AIRFLOW__LOGGING__REMOTE_LOGGING
+              value: "False"
+
+          volumeMounts:
+            - name: airflow-logs
+              mountPath: /opt/airflow/logs
+
+      volumes:
+        - name: airflow-logs
+          persistentVolumeClaim:
+            claimName: airflow-logs-pvc

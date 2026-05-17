@@ -64,6 +64,13 @@ spec:
             - name: AIRFLOW__LOGGING__REMOTE_LOGGING
               value: "False"
 
+          # envFrom con mlops-config
+          envFrom:
+            - configMapRef:
+                name: mlops-config
+            - secretRef:
+                name: mlops-secrets
+
           volumeMounts:
             - name: airflow-logs
               mountPath: /opt/airflow/logs

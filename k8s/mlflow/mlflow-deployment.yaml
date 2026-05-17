@@ -21,13 +21,11 @@ spec:
         io.kompose.service: mlflow
     spec:
       containers:
-        - env:
-            - name: AWS_ACCESS_KEY_ID
-              value: admin
-            - name: AWS_SECRET_ACCESS_KEY
-              value: supersecret
-            - name: MLFLOW_S3_ENDPOINT_URL
-              value: http://minio:9000
+        - envFrom:
+            - configMapRef:
+                name: mlops-config
+            - secretRef:
+                name: mlops-secrets
           image: karabaharesu/mlflow-custom:2.0
           livenessProbe:
             exec:

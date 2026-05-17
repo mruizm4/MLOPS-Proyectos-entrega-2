@@ -46,7 +46,7 @@ os.environ["AWS_SECRET_ACCESS_KEY"] = os.environ.get("AWS_SECRET_ACCESS_KEY")
 os.environ["AWS_DEFAULT_REGION"] = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
 
 
-MYSQL_HOST = os.environ.get("MYSQL_HOST", "mysql_db")
+MYSQL_HOST = os.environ.get("MYSQL_HOST", "mysql-db")
 MYSQL_PORT = os.environ.get("MYSQL_PORT", "3306")
 MYSQL_DB = os.environ.get("MYSQL_DATABASE")
 MYSQL_USER = os.environ.get("MYSQL_USER", "mlops_user")

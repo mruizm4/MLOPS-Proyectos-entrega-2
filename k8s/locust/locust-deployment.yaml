@@ -21,9 +21,9 @@ spec:
         io.kompose.service: locust
     spec:
       containers:
-        - env:
-            - name: LOCUST_HOST
-              value: http://api-inference:8001
+        - envFrom:
+            - configMapRef:
+                name: mlops-config
           image: karabaharesu/locust-custom:1.0
           name: locust
           ports:

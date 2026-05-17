@@ -29,6 +29,12 @@ spec:
               --role Admin \
               --email admin@example.com
 
+          envFrom:
+            - configMapRef:
+                name: mlops-config
+            - secretRef:
+                name: mlops-secrets
+
           env:
             - name: AIRFLOW__CORE__EXECUTOR
               value: CeleryExecutor

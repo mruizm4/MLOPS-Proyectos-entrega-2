@@ -23,11 +23,9 @@ spec:
         io.kompose.service: grafana
     spec:
       containers:
-        - env:
-            - name: GF_SECURITY_ADMIN_PASSWORD
-              value: admin
-            - name: GF_SECURITY_ADMIN_USER
-              value: admin
+        - envFrom:
+            - secretRef:
+                name: mlops-secrets
           image: grafana/grafana
           name: grafana
           ports:

@@ -25,15 +25,9 @@ spec:
       containers:
         - args:
             - --log-bin-trust-function-creators=1
-          env:
-            - name: MYSQL_DATABASE
-              value: mlops_db
-            - name: MYSQL_PASSWORD
-              value: mlops_pass
-            - name: MYSQL_ROOT_PASSWORD
-              value: root
-            - name: MYSQL_USER
-              value: mlops_user
+          envFrom:
+            - secretRef:
+                name: mlops-secrets
           image: mysql:8.0
           livenessProbe:
             exec:

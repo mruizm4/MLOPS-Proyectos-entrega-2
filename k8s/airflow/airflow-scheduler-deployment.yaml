@@ -29,6 +29,12 @@ spec:
           args:
             - scheduler
 
+          envFrom:
+            - configMapRef:
+                name: mlops-config
+            - secretRef:
+                name: mlops-secrets
+
           env:
             - name: AIRFLOW__CORE__EXECUTOR
               value: CeleryExecutor
@@ -53,7 +59,7 @@ spec:
 
             - name: PYTHONPATH
               value: /opt/airflow
-              
+
             - name: AIRFLOW__LOGGING__BASE_LOG_FOLDER
               value: /opt/airflow/logs
 

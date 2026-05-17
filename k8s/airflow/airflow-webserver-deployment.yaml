@@ -33,6 +33,12 @@ spec:
             - containerPort: 8080
               protocol: TCP
 
+          envFrom:
+            - configMapRef:
+                name: mlops-config
+            - secretRef:
+                name: mlops-secrets
+
           env:
             - name: AIRFLOW__CORE__EXECUTOR
               value: CeleryExecutor

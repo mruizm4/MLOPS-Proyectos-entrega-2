@@ -1,0 +1,15 @@
+AWS_ACCESS_KEY_ID=admin
+AWS_SECRET_ACCESS_KEY=supersecret
+MYSQL_DATABASE=mlops_db
+MYSQL_USER=mlops_user
+MYSQL_PASSWORD=mlops_pass
+MYSQL_ROOT_PASSWORD=root
+RAW_TABLE=raw_diabetes_data
+CLEAN_TABLE=clean_diabetes_data
+SPLIT_TABLE=dataset_split
+MINIO_ROOT_USER=admin
+MINIO_ROOT_PASSWORD=supersecret
+MINIO_SECRET_KEY=supersecret
+GF_SECURITY_ADMIN_USER=admin
+GF_SECURITY_ADMIN_PASSWORD=admin
+MLFLOW_DB=mlflow_db

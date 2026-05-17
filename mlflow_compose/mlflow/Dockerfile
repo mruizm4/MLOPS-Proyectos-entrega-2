@@ -1,10 +1,5 @@
 FROM python:3.11-slim
 
-# Variables de entorno para MinIO
-ENV MLFLOW_S3_ENDPOINT_URL=http://minio:9000 \
-    AWS_ACCESS_KEY_ID=admin \
-    AWS_SECRET_ACCESS_KEY=supersecret
-
 # Directorio de trabajo
 WORKDIR /app
 
@@ -16,16 +11,17 @@ RUN pip install --no-cache-dir \
     cryptography \
     minio
 
+# curl para healthcheck/debug
 RUN apt-get update && apt-get install -y curl
 
 # Exponer puerto MLflow
 EXPOSE 5000
 
-# Levantar servidor MLflow usando MySQL
-CMD ["mlflow", "server", \
-     "--host", "0.0.0.0", \
-     "--port", "5000", \
-     "--backend-store-uri", "mysql+pymysql://mlops_user:mlops_pass@mysql-db:3306/mlflow_db", \
-     "--default-artifact-root", "s3://mlflow-artifacts", \
-     "--serve-artifacts", \
-     "--allowed-hosts", "*"]
+# Levantar MLflow usando variables de entorno
+CMD sh -c 'mlflow server \
+  --host 0.0.0.0 \
+  --port 5000 \
+  --backend-store-uri mysql+pymysql://${MYSQL_USER}:${MYSQL_PASSWORD}@${MYSQL_HOST}:${MYSQL_PORT}/${MLFLOW_DB} \
+  --default-artifact-root s3://${MINIO_BUCKET} \
+  --serve-artifacts \
+  --allowed-hosts "*"'

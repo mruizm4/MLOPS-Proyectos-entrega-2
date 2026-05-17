@@ -51,21 +51,21 @@ from fastapi.responses import JSONResponse
 # MYSQL
 # ----------------------------------------
 
-MYSQL_HOST = "mysql-db"
-MYSQL_PORT = 3306
-MYSQL_DB = "mlops_db"
-MYSQL_USER = "mlops_user"
-MYSQL_PASSWORD = "mlops_pass"
+MYSQL_HOST = os.environ.get("MYSQL_HOST", "mysql_db")
+MYSQL_PORT = os.environ.get("MYSQL_PORT", 3306)
+MYSQL_DB = os.environ.get("MYSQL_DATABASE")
+MYSQL_USER = os.environ.get("MYSQL_USER")
+MYSQL_PASSWORD = os.environ.get("MYSQL_PASSWORD")
 
 # ----------------------------------------
 # MLFLOW
 # ----------------------------------------
 
-MLFLOW_TRACKING_URI = "http://mlflow:5000"
+MLFLOW_TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", "http://mlflow:5000")
 
-MODEL_NAME = "diabetes_catboost_model"
+MODEL_NAME = os.environ.get("MODEL_NAME", "diabetes_model")
 
-MODEL_ALIAS = "champion"
+MODEL_ALIAS = os.environ.get("MODEL_ALIAS", "champion")
 
 # ----------------------------------------
 # MODEL REFRESH

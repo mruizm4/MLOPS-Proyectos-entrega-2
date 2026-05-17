@@ -6,12 +6,13 @@ import json
 import random
 import requests
 import streamlit as st
+import os
 
 # ============================================================
 # ⚙️ CONFIG
 # ============================================================
 
-API_URL = "http://api-inference:8001"
+API_URL = os.environ.get("API_URL", "http://api-inference:8000")
 
 # ============================================================
 # PAGE CONFIG

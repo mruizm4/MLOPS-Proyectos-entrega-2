@@ -76,6 +76,9 @@ x-airflow-common:
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
     # WARNING: Use _PIP_ADDITIONAL_REQUIREMENTS option ONLY for a quick checks
     # for other purpose (development, test and especially production usage) build/extend Airflow image.
+  env_file:
+      - .env
+      - .sec_config
   volumes:
     - ./airflow/dags:/opt/airflow/dags
     - ./airflow/logs:/opt/airflow/logs
@@ -261,6 +264,9 @@ services:
       _AIRFLOW_WWW_USER_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-airflow}
       _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-airflow}
       _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
+    env_file:
+      - .env
+      - .sec_config
     user: "0:0"
     volumes:
       - ${AIRFLOW_PROJ_DIR:-.}:/sources
@@ -308,11 +314,9 @@ services:
     command:
       --log-bin-trust-function-creators=1
 
-    environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: mlops_db
-      MYSQL_USER: mlops_user
-      MYSQL_PASSWORD: mlops_pass
+    env_file:
+      - .env
+      - .sec_config
 
     ports:
       - "3306:3306"
@@ -340,19 +344,6 @@ services:
       retries: 10
       start_period: 20s
 
-#  db_loader:
-#    build:
-#      context: ./mysql_db
-#      dockerfile: Dockerfile.mysql_db
-#
-#    depends_on:
-#      - mysql_db
-#      - get_data_api
-#
-#    networks:
-#      - mlops_net
-#
-#    restart: on-failure
 
   get_data_api:
     build:
@@ -371,9 +362,9 @@ services:
     image: quay.io/minio/minio:latest
     container_name: minio
     command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: admin
-      MINIO_ROOT_PASSWORD: supersecret
+    env_file:
+      - .env
+      - .sec_config
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -384,28 +375,6 @@ services:
       - mlops_net
     restart: unless-stopped
 
-#  jupyter:
-#    build:
-#      context: .
-#      dockerfile: mlflow_compose/notebooks/Dockerfile.jupyter
-#    container_name: jupyter-notebook
-#    ports:
-#      - "8888:8888"
-#    environment:
-#      - JUPYTER_ENABLE_LAB=yes
-#      - JUPYTER_TOKEN=minio123
-#      - AWS_ACCESS_KEY_ID=admin
-#      - AWS_SECRET_ACCESS_KEY=supersecret
-#      - AWS_DEFAULT_REGION=us-east-1
-#      - MINIO_ENDPOINT=http://minio:9000
-#    volumes:
-#      - ./MinIO_ObjectStore/notebooks:/home/jovyan/work
-#    depends_on:
-#      - minio
-#    networks:
-#      - minio-net
-#      - mlops_net
-#    restart: unless-stopped
 
   api-inference:
     build:
@@ -433,13 +402,9 @@ services:
       
       
 
-    environment:
-      - AWS_ACCESS_KEY_ID=admin
-      - AWS_SECRET_ACCESS_KEY=supersecret
-      - AWS_DEFAULT_REGION=us-east-1
-      - MLFLOW_TRACKING_URI=http://mlflow:5000
-      - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
-      - MINIO_ENDPOINT=http://minio:9000
+    env_file:
+      - .env
+      - .sec_config
 
     volumes:
       - ./inference_api:/app
@@ -451,16 +416,16 @@ services:
       - mlops_net
 
   mlflow:
+
     build:
       context: ./mlflow_compose/mlflow
       dockerfile: Dockerfile
 
     container_name: mlflow
 
-    environment:
-      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
-      AWS_ACCESS_KEY_ID: admin
-      AWS_SECRET_ACCESS_KEY: supersecret
+    env_file:
+      - .env
+      - .sec_config
 
     depends_on:
 
@@ -477,12 +442,14 @@ services:
       - "5000:5000"
 
     healthcheck:
-      test: [
-        "CMD",
-        "curl",
-        "-f",
-        "http://localhost:5000"
-      ]
+      test:
+        [
+          "CMD",
+          "curl",
+          "-f",
+          "http://localhost:5000"
+        ]
+
       interval: 10s
       timeout: 5s
       retries: 10
@@ -501,8 +468,9 @@ services:
     container_name: locust
     ports:
       - "8089:8089"
-    environment:
-      - LOCUST_HOST=http://api-inference:8001
+    env_file:
+      - .env
+      - .sec_config
     networks:
       - mlops_net
 
@@ -515,6 +483,10 @@ services:
 
     ports:
       - "8501:8501"
+
+    env_file:
+      - .env
+      - .sec_config
 
     depends_on:
       - api-inference
@@ -561,9 +533,9 @@ services:
       - ./grafana/provisioning:/etc/grafana/provisioning
       - ./grafana/dashboards:/var/lib/grafana/dashboards
 
-    environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+    env_file:
+      - .env
+      - .sec_config
     
     depends_on:
       - prometheus

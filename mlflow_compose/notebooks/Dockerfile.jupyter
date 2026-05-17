@@ -1,2 +1,0 @@
-# Dockerfile for jupyter notebook
-FROM jupyter/scipy-notebook:latest

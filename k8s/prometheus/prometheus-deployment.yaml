@@ -25,6 +25,14 @@ spec:
       containers:
         - image: prom/prometheus
           name: prometheus
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
           ports:
             - containerPort: 9090
               protocol: TCP

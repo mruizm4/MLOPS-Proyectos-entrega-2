@@ -23,6 +23,14 @@ spec:
       containers:
         - image: karabaharesu/streamlit-ui:1.0
           name: streamlit-ui
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+
+            limits:
+              memory: "256Mi"
+              cpu: "250m"
           ports:
             - containerPort: 8501
               protocol: TCP

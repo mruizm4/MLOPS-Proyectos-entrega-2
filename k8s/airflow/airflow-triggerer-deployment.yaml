@@ -28,6 +28,15 @@ spec:
           image: karabaharesu/mlops-airflow:latest
           imagePullPolicy: Always
 
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+
           args:
             - triggerer
 

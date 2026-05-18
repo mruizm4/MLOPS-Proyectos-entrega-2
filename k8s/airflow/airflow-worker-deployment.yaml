@@ -19,6 +19,15 @@ spec:
     spec:
       containers:
         - name: airflow-worker
+          
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+
+            limits:
+              memory: "3Gi"
+              cpu: "3000m"
 
           image: karabaharesu/mlops-airflow:latest
           imagePullPolicy: Always

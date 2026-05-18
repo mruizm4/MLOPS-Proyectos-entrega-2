@@ -33,6 +33,15 @@ spec:
           imagePullPolicy: Always
           name: get-data-api
 
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+
           ports:
             - containerPort: 8003
               protocol: TCP

@@ -33,6 +33,16 @@ spec:
                 name: mlops-secrets
           image: quay.io/minio/minio:latest
           name: minio
+
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+
           ports:
             - containerPort: 9000
               protocol: TCP

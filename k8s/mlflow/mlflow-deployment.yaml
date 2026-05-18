@@ -38,6 +38,16 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 5
           name: mlflow
+
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "250m"
+
+            limits:
+              memory: "3Gi"
+              cpu: "1500m"
+
           ports:
             - containerPort: 5000
               protocol: TCP

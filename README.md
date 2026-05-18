@@ -39,6 +39,33 @@
 | **Locust** | 8089 | Testing de carga |
 | **Streamlit** | 8501 | Interfaz web del usuario |
 
+### 📊 Consumo de Recursos Observado
+
+Mediciones reales después de 7 horas de operación estable:
+
+| Servicio | CPU (cores) | Memoria |
+|----------|-------------|---------|
+| **airflow-scheduler** | 127m | 349Mi |
+| **airflow-webserver** | 70m | 877Mi |
+| **airflow-worker** | 73m | 1,993Mi ⚠️ |
+| **airflow-triggerer** | 13m | 293Mi |
+| **mlflow** | 23m | 2,007Mi ⚠️ |
+| **postgres** | 35m | 93Mi |
+| **mysql-db** | 11m | 417Mi |
+| **prometheus** | 2m | 23Mi |
+| **grafana** | 12m | 212Mi |
+| **minio** | 1m | 122Mi |
+| **api-inference** | 5m | 190Mi |
+| **get-data-api** | 2m | 134Mi |
+| **locust** | 1m | 40Mi |
+| **TOTAL SERVICIOS** | **~384m** | **~8,350Mi (~8.1GB)** |
+
+**⚠️ Nota Importante**: 
+- MLflow y Airflow Worker son los mayores consumidores de recursos
+- El uso total es de ~8-9GB en estado estable
+- Minikube + Docker Desktop usan aproximadamente 2-3GB adicionales
+- **Consumo total del sistema**: 10-12GB (de los 14GB asignados)
+
 ---
 
 ## 📋 Requisitos Previos
@@ -51,25 +78,49 @@
 - **Python** 3.9+ (para DAGs locales)
 - **Git**
 
-### Especificaciones Mínimas del Sistema
+### Especificaciones Recomendadas del Sistema
 
-- **RAM**: 8GB mínimo (12GB recomendado)
-- **CPU**: 4 cores mínimo
+⚠️ **IMPORTANTE**: Basado en mediciones reales de consumo (7 horas en estado estable):
+
+- **RAM Total**: **14GB mínimo** (todos los servicios + overhead de Minikube)
+  - Consumo promedio de servicios: 8-9GB
+  - Overhead de Minikube + Docker: 2-3GB
+- **CPU**: **6 cores mínimo** (4 cores es insuficiente y causa throttling)
 - **Almacenamiento**: 20GB libres
+
+**Notas Importantes**:
+- Con 8GB de RAM + 4 cores, Minikube se sobrecarga y los servicios funcionan lentamente
+- Minikube utiliza recursos adicionales para sus propios procesos (kubelet, scheduler, etc.)
+- Se recomienda asignar al menos 14GB de RAM para operación estable
 
 ### Inicializar Minikube
 
 ```bash
-# Crear cluster con recursos suficientes
+# Crear cluster con recursos suficientes (RECOMENDADO)
 minikube start \
-  --cpus=4 \
-  --memory=8192 \
+  --cpus=6 \
+  --memory=14336 \
   --driver=docker \
   --nodes=1
 
 # Habilitar addons necesarios
 minikube addons enable ingress
 minikube addons enable metrics-server
+
+# Verificar que Minikube está con los recursos correctos
+minikube status
+kubectl top nodes
+```
+
+### Monitorear Uso de Recursos de Minikube
+
+```bash
+# Ver consumo de CPU y memoria en tiempo real
+kubectl top nodes
+kubectl top pods -A
+
+# Ver límites y requests configurados
+kubectl describe nodes
 ```
 
 ---
@@ -409,6 +460,126 @@ sum(rate(container_cpu_usage_seconds_total[5m])) by (pod_name)
 # Locust automáticamente scrapeará la API
 # Monitorear en tiempo real en el dashboard web
 ```
+
+---
+
+## ⚙️ Optimización y Gestión de Recursos
+
+### Límites de Recursos Configurados (Basado en Mediciones Reales)
+
+Todos los servicios tienen límites (`requests` y `limits`) configurados en sus manifiestos Kubernetes, basados en el consumo promedio observado durante 7 horas:
+
+```yaml
+# Ejemplo de configuración en los manifiestos
+resources:
+  requests:
+    cpu: "127m"        # CPU mínima garantizada
+    memory: "349Mi"    # Memoria mínima garantizada
+  limits:
+    cpu: "200m"        # CPU máxima permitida
+    memory: "500Mi"    # Memoria máxima permitida
+```
+
+### Servicios Críticos (Alto Consumo)
+
+| Servicio | Request CPU | Limit CPU | Request Mem | Limit Mem | Notas |
+|----------|-------------|-----------|-------------|-----------|-------|
+| **airflow-worker** | 73m | 150m | 1,993Mi | 2,500Mi | Mayor consumidor de memoria |
+| **mlflow** | 23m | 100m | 2,007Mi | 2,500Mi | Requiere almacenamiento en S3 |
+| **airflow-scheduler** | 127m | 200m | 349Mi | 500Mi | CPU intensivo |
+| **airflow-webserver** | 70m | 150m | 877Mi | 1,200Mi | Interfaz web y API |
+
+### Servicios Ligeros (Bajo Consumo)
+
+| Servicio | Request CPU | Limit CPU | Request Mem | Limit Mem |
+|----------|-------------|-----------|-------------|-----------|
+| **prometheus** | 2m | 50m | 23Mi | 200Mi |
+| **minio** | 1m | 50m | 122Mi | 300Mi |
+| **locust** | 1m | 50m | 40Mi | 200Mi |
+| **get-data-api** | 2m | 50m | 134Mi | 300Mi |
+
+### Estrategias de Optimización
+
+#### 1. **Escalado Vertical (Recomendado)**
+```bash
+# Aumentar recursos de Minikube si tenemos hardware disponible
+minikube stop
+minikube start --cpus=8 --memory=16384
+
+# Monitorear disponibilidad
+kubectl top nodes
+```
+
+#### 2. **Escalado Horizontal (Para Airflow Workers)**
+```bash
+# Aumentar réplicas de Airflow workers
+kubectl scale deployment airflow-worker --replicas=3 -n mlops
+
+# Monitorear carga
+kubectl top pods -n mlops | grep airflow-worker
+```
+
+#### 3. **Monitoreo Continuo**
+```bash
+# Monitorear en tiempo real (en terminal separada)
+watch 'kubectl top pods -n mlops'
+
+# Exportar métricas para análisis histórico
+kubectl top pods -n mlops > metrics_$(date +%s).log
+
+# Ver alertas de Prometheus
+# http://localhost:9090/alerts
+```
+
+#### 4. **Limpieza de Recursos**
+```bash
+# Limpiar artefactos de MLflow antiguos (>30 días)
+kubectl exec -it deployment/minio -n mlops -- \
+  mc rm minio/mlflow-artifacts --recursive --older-than 30d
+
+# Limpiar logs de Airflow
+kubectl exec -it deployment/airflow-scheduler -n mlops -- \
+  find /opt/airflow/logs -type f -mtime +30 -delete
+
+# Reducir tamaño de base de datos Airflow
+kubectl exec -it deployment/mysql-db -n mlops -- \
+  mysql -u mlops_user -pmlops_pass mlops_db \
+  -e "DELETE FROM log WHERE execution_date < DATE_SUB(NOW(), INTERVAL 30 DAY);"
+```
+
+### Recomendaciones de Configuración Óptima
+
+| Parámetro | Mínimo | Recomendado | Máximo |
+|-----------|--------|-------------|--------|
+| **Minikube RAM** | 8GB | **14GB** | 24GB |
+| **Minikube CPU** | 4 cores | **6 cores** | 8 cores |
+| **Almacenamiento** | 20GB | 30GB | 50GB |
+| **Airflow Workers** | 1 | 2-3 | 5+ |
+
+### Diagnóstico de Sobrecarga
+
+Señales de que Minikube está sobrecargado:
+
+```bash
+# 1. Ver nodos con presión de memoria/CPU
+kubectl describe nodes | grep -A 10 "Conditions"
+
+# 2. Verificar pods en estado Pending
+kubectl get pods -n mlops | grep Pending
+
+# 3. Ver eventos de desalojo (eviction)
+kubectl get events -n mlops | grep Evicted
+
+# 4. Monitorear latencia de API
+# Si requests tardan >5 segundos, hay sobrecarga
+```
+
+**Soluciones**:
+- ✅ Aumentar memoria de Minikube a 14GB
+- ✅ Aumentar cores a 6
+- ✅ Escalar workers de Airflow
+- ✅ Archivar logs antiguos de Airflow
+- ✅ Limpiar artefactos de MLflow
 
 ---
 

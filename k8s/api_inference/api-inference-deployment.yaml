@@ -27,6 +27,15 @@ spec:
 
         - name: api-inference
 
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+
+            limits:
+              memory: "768Mi"
+              cpu: "1000m"
+
           image: karabaharesu/api-inference:2.0
           imagePullPolicy: Always
 

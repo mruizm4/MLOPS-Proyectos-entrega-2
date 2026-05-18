@@ -28,6 +28,14 @@ spec:
                 name: mlops-secrets
           image: grafana/grafana
           name: grafana
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
           ports:
             - containerPort: 3000
               protocol: TCP

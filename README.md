@@ -1,4 +1,9 @@
-# MLOPS MLOps Platform - Kubernetes Deployment
+# MLOps Platform - Kubernetes Deployment (Proyecto 2)
+
+## Integrantes del grupo
+
+- Carlos Manuel Carvajales Castrillo
+- Mateo Ruiz Mendoza
 
 ## 📋 Descripción General
 
